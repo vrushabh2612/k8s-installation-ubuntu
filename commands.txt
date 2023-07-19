@@ -1,0 +1,118 @@
+*************************************************************************
+################# To be run on master and slave #########################
+*************************************************************************
+# update the dependencies
+sudo apt-get update
+sudo apt upgrade -y  
+
+# update host file on cluster servers 
+sudo vi /etc/hosts
+--- 
+<ip_of_server> k8s-master
+<ip_of_server> k8s-worker
+
+# disable the swap
+sudo swapoff -a
+sudo nano /etc/fstab   &&   comment out Swap line
+
+# update kernel module
+sudo tee /etc/modules-load.d/containerd.conf <<EOF
+overlay
+br_netfilter
+EOF
+
+# execute below
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# setting kernel parameters for k8s
+sudo tee /etc/sysctl.d/kubernetes.conf <<EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+# reload the changes
+sudo sysctl --system
+
+# install container dependencies
+sudo apt install -y curl gnupg2 software-properties-common apt-transport-https ca-certificates
+
+# enable docker repository
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/docker.gpg
+
+# enable docker repository
+sudo add-apt-repository "deb [arch=amd64]  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+
+# update repo
+sudo apt-get update
+
+# install docker
+sudo apt install -y containerd.io
+
+# configure container to start using cgroup
+containerd config default | sudo tee /etc/containerd/config.toml >/dev/null 2>&1
+
+# configure container to start using cgroup
+sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \ = true/g' /etc/containerd/config.toml
+
+# restart & enable container services
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+
+# execute to add apt for k8s
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+sudo apt-add-repository "deb http://apt.kubernetes.io/ kubernetes-xenial main"
+
+# install k8s components
+sudo apt install -y kubeadm kubectl kubelet
+sudo apt-mark hold kubeadm kubectl kubelet
+
+# initialise kubernetes cluster
+sudo kubeadm init \
+--pod-network-cidr=10.10.0.0/16 \
+--control-plane-endpoint=k8s-master
+
+
+*************************************************************************
+################# To be run on master ###################################
+*************************************************************************
+sudo kubeadm init --pod-network-cidr=<range_of_network_driver> --apiserver-advertise-address=<IP_address_of_the_master>
+# for calico it's CNI = 192.168.0.0/16 && for fannel it's CNI = 10.244.0.0/16 
+# initialise kubernetes cluster
+sudo kubeadm init \
+--pod-network-cidr=10.10.0.0/16 \
+--control-plane-endpoint=192.168.1.23
+
+# execute below commands as kubernetes user
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+# check k8s cluster information
+kubectl cluster-info
+kubectl get nodes
+
+*************************************************************************
+################# To be run on nodes ####################################
+*************************************************************************
+# Then you can join any number of worker nodes by running the following on each as root:
+
+sudo kubeadm join k8s-master:6443 --token p78hed.vv3bs70o75xhmaiy \
+--discovery-token-ca-cert-hash sha256:16763adf04b8f70d08ee35856a5f26af6246bb4c89f66fd343f87255110e9924
+
+# You can now join any number of control-plane nodes by copying certificate authorities
+  and service account keys on each node and then running the following as root:
+
+sudo kubeadm join k8s-master:6443 --token p78hed.vv3bs70o75xhmaiy \
+--discovery-token-ca-cert-hash sha256:16763adf04b8f70d08ee35856a5f26af6246bb4c89f66fd343f87255110e9924 \
+--control-plane
+
+*************************************************************************
+####################### delete cluster ##################################
+*************************************************************************
+
+kubeadm reset
+sudo apt-get purge kubeadm kubectl kubelet kubernetes-cni kube*   
+sudo apt-get autoremove  
+sudo rm -rf ~/.kube
