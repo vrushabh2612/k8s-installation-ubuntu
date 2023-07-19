@@ -93,6 +93,19 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 kubectl cluster-info
 kubectl get nodes
 
+# create pod network
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml -O 
+
+# modify content
+# cat calico.yaml | grep CALICO_IPV4POOL_CIDR
+# same as cidr we pass at initialise --pod-network-cidr=10.10.0.0/16
+
+# apply modified calico.yaml
+kubectl apply -f calico.yaml 
+
+# watch pods in kube-system namespace 
+kubectl get pods -n kube-system --watch
+
 *************************************************************************
 ################# To be run on nodes ####################################
 *************************************************************************
