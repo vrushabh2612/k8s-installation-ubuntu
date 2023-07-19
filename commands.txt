@@ -125,7 +125,8 @@ sudo kubeadm join k8s-master:6443 --token p78hed.vv3bs70o75xhmaiy \
 ####################### delete cluster ##################################
 *************************************************************************
 
-kubeadm reset
+sudo kubeadm reset
 sudo apt-get purge kubeadm kubectl kubelet kubernetes-cni kube*   
 sudo apt-get autoremove  
 sudo rm -rf ~/.kube
+sudo shutdown -r now
